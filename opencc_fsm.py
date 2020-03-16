@@ -24,6 +24,7 @@ for line in fileinput.input(args['input'], openhook=fileinput.hook_encoded("utf-
         raw_table.append(tuple(parts[0:2]))
 
 raw_table.sort(key=lambda p: len(p[0]), reverse=True)
+all_prefix = [s[:i] for s, _ in raw_table for i in range(1, len(s))]
 
 def translate_word(text: str) -> typing.Tuple[str, str]:
     for src, dst in raw_table:
@@ -40,7 +41,7 @@ def translate(text: str) -> str:
 
 def translate_with_tail(text: str) -> typing.Tuple[str, str]:
     output = ''
-    while text and text not in all_prefix:
+    while text and (not output or text not in all_prefix):
         adding, text = translate_word(text)
         output += adding
     return output, text
