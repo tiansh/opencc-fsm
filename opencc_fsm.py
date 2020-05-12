@@ -1,3 +1,4 @@
+import sys
 import typing
 import fileinput
 import json
@@ -23,7 +24,46 @@ for line in fileinput.input(args['input'], openhook=fileinput.hook_encoded("utf-
     if len(parts) >= 2:
         raw_table.append(tuple(parts[0:2]))
 
-raw_table.sort(key=lambda p: len(p[0]), reverse=True)
+def is_redundant(table: typing.List[typing.Tuple[str, str]], source: str, result: str):
+    if source == result == '':
+        return True
+    for s, t in table:
+        if source == s:
+            return result == t
+        elif source.startswith(s):
+            if result.startswith(t):
+                return is_redundant(table, source[len(s):], result[len(t):])
+            else:
+                return False
+        elif s.startswith(source):
+            return False
+    if source[0] != result[0]:
+        return False
+    return is_redundant(table, source[1:], result[1:])
+
+def clean_up_redundant(raw_table: typing.List[typing.Tuple[str, str]]):
+    raw_table.sort(key=lambda p: len(p[0]))
+    all_prefix = {s[:i] for s, _ in raw_table for i in range(1, len(s))}
+    result_table = []
+    for source, result in raw_table:
+        keep = len(source) == 1
+        keep = keep or {source[i:] for i in range(1, len(source))} & all_prefix != set()
+        keep = keep or not is_redundant(result_table, source, result)
+        if keep:
+            result_table.insert(0, (source, result))
+        else:
+            sys.stderr.write(f'Rule ignored: {source} -> {result}\n')
+    return result_table
+
+def clean_up_redundant_wrap(raw_table: typing.List[typing.Tuple[str, str]]):
+    while True:
+        lines = len(raw_table)
+        raw_table = clean_up_redundant(raw_table)
+        if lines == len(raw_table):
+            return raw_table
+
+raw_table = clean_up_redundant_wrap(raw_table)
+
 all_prefix = [s[:i] for s, _ in raw_table for i in range(1, len(s))]
 
 def translate_word(text: str) -> typing.Tuple[str, str]:
@@ -105,4 +145,5 @@ for state in range(len(simplify)):
 json_result = json.dumps(simplify, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
 with open(args['output'], 'w', encoding='utf-8') as output:
     output.write(json_result)
+
 
