@@ -15,7 +15,7 @@
         * 原封不动输出这个字
 * 当转换结束时，如果不在0状态，反复匹配空串对应的状态，直至到达0状态
 
-示例输出的状态机 t2s.json, s2t.json 分别由 OpenCC 的 TSCharacters.txt + TSPhrases.txt 与 STCharacters.txt + STPhrases.txt 生成。如果需要其他的规则可以自己试着运行一下这个转换程序。
+示例输出的状态机 fsm/t2s.json, fsm/s2t.json 由 dict 目录下对应的 txt 生成。dict 目录下的 txt 文件基于 OpenCC 的词典生成，有部分改动。详情见 dict 目录。
 
 ## Credits
 
