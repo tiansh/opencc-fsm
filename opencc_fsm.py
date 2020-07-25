@@ -12,7 +12,8 @@ parser.add_argument(
 )
 parser.add_argument(
     '--output', '-o',
-    help='输出文件'
+    help='输出文件',
+    required=True
 )
 args = vars(parser.parse_args())
 
