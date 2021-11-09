@@ -15,7 +15,9 @@
         * 原封不动输出这个字
 * 当转换结束时，如果不在0状态，反复匹配空串对应的状态，直至到达0状态
 
-示例输出的状态机 fsm/t2s.json, fsm/s2t.json 由 dict 目录下对应的 txt 生成。dict 目录下的 txt 文件基于 OpenCC 的词典生成，有部分改动。详情见 dict 目录。
+示例输出的状态机 fsm/\*.json 由 dict 目录下对应的 txt 生成。
+
+dict 目录下的 txt 文件基于 OpenCC 的词典生成，有部分改动。详情见 dict 目录。
 
 ## Credits
 

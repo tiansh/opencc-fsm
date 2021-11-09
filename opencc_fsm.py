@@ -5,42 +5,34 @@ import json
 import argparse
 
 parser = argparse.ArgumentParser(description='输入繁简转换表，使用最大最早匹配，输出状态机')
-parser.add_argument(
-    'input',
-    nargs='?',
-    help='输入文件'
-)
-parser.add_argument(
-    '--output', '-o',
-    help='输出文件',
-    required=True
-)
+parser.add_argument('input', nargs='?', help='输入文件')
+parser.add_argument('--max-size', '-s', help='忽略超过该长度的规则', type=int, default=-1)
+parser.add_argument('--output', '-o', help='输出文件', required=True)
 args = vars(parser.parse_args())
 
 raw_table: typing.List[typing.Tuple[str, str]] = []
 all_prefix: typing.List[str] = []
+all_suffix: typing.List[str] = []
+table: typing.List[typing.Dict[str, typing.Tuple[str, int]]] = []
 
-for line in fileinput.input(args['input'], openhook=fileinput.hook_encoded("utf-8")):
-    parts = line.strip().split()
-    if len(parts) >= 2:
-        raw_table.append(tuple(parts[0:2]))
+def clean_up_length(raw_table: typing.List[typing.Tuple[str, str]]):
+    result_table = []
+    for source, result in raw_table:
+        if len(source) > args['max_size'] > 0:
+           print(f'Rule ignored: {source} -> {result}')
+        else:
+            result_table.append((source, result))
+    return result_table
 
-def is_redundant(table: typing.List[typing.Tuple[str, str]], source: str, result: str):
-    if source == result == '':
-        return True
-    for s, t in table:
+def convert_by_raw(raw_table: typing.List[typing.Tuple[str, str]], source: str, direct: bool = False):
+    if source == '':
+        return ''
+    for s, t in raw_table:
         if source == s:
-            return result == t
+            if direct: return t
         elif source.startswith(s):
-            if result.startswith(t):
-                return is_redundant(table, source[len(s):], result[len(t):])
-            else:
-                return False
-        elif s.startswith(source):
-            return False
-    if source[0] != result[0]:
-        return False
-    return is_redundant(table, source[1:], result[1:])
+            return t + convert_by_raw(raw_table, source[len(s):], True)
+    return source[0] + convert_by_raw(raw_table, source[1:], True)
 
 def clean_up_redundant(raw_table: typing.List[typing.Tuple[str, str]]):
     raw_table.sort(key=lambda p: len(p[0]))
@@ -49,23 +41,14 @@ def clean_up_redundant(raw_table: typing.List[typing.Tuple[str, str]]):
     for source, result in raw_table:
         keep = len(source) == 1
         keep = keep or {source[i:] for i in range(1, len(source))} & all_prefix != set()
-        keep = keep or not is_redundant(result_table, source, result)
+        keep = keep or convert_by_raw(raw_table, source) != result
         if keep:
             result_table.insert(0, (source, result))
         else:
             sys.stderr.write(f'Rule ignored: {source} -> {result}\n')
-    return result_table
-
-def clean_up_redundant_wrap(raw_table: typing.List[typing.Tuple[str, str]]):
-    while True:
-        lines = len(raw_table)
-        raw_table = clean_up_redundant(raw_table)
-        if lines == len(raw_table):
-            return raw_table
-
-raw_table = clean_up_redundant_wrap(raw_table)
-
-all_prefix = [s[:i] for s, _ in raw_table for i in range(1, len(s))]
+    if len(result_table) == len(raw_table):
+        return result_table
+    return clean_up_redundant(result_table)
 
 def translate_word(text: str) -> typing.Tuple[str, str]:
     for src, dst in raw_table:
@@ -87,7 +70,14 @@ def translate_with_tail(text: str) -> typing.Tuple[str, str]:
         output += adding
     return output, text
 
-table: typing.List[typing.Dict[str, typing.Tuple[str, int]]] = []
+# Read input
+for line in fileinput.input(args['input'], openhook=fileinput.hook_encoded("utf-8")):
+    parts = line.strip().split()
+    if len(parts) >= 2:
+        raw_table.append(tuple(parts[0:2]))
+
+raw_table = clean_up_redundant(clean_up_length(raw_table))
+all_prefix = [s[:i] for s, _ in raw_table for i in range(1, len(s))]
 
 # Parse 1
 table.append({})
