@@ -1,0 +1,8 @@
+<meta charset="utf-8" />
+<script src="./opencc_fsm_conv.js"></script>
+<script>
+  const req = fetch('../../fsm/t2s.json').then(r => r.json());
+  req.then(fsm => {
+    alert(window.OpenCCFsm.convert(fsm, '繁簡轉換測試'));
+  });
+</script>
