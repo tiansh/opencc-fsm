@@ -1,0 +1,3 @@
+[submodule "OpenCC"]
+	path = OpenCC
+	url = git@github.com:BYVoid/OpenCC.git

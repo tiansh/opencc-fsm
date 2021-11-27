@@ -5,7 +5,7 @@ import json
 import argparse
 
 parser = argparse.ArgumentParser(description='输入繁简转换表，使用最大最早匹配，输出状态机')
-parser.add_argument('input', nargs='?', help='输入文件')
+parser.add_argument('input', nargs='+', help='输入文件')
 parser.add_argument('--max-size', '-s', help='忽略超过该长度的规则', type=int, default=-1)
 parser.add_argument('--output', '-o', help='输出文件', required=True)
 args = vars(parser.parse_args())
@@ -71,10 +71,11 @@ def translate_with_tail(text: str) -> typing.Tuple[str, str]:
     return output, text
 
 # Read input
-for line in fileinput.input(args['input'], openhook=fileinput.hook_encoded("utf-8")):
-    parts = line.strip().split()
-    if len(parts) >= 2:
-        raw_table.append(tuple(parts[0:2]))
+for filename in args['input']:
+    for line in fileinput.input(args['input'], openhook=fileinput.hook_encoded("utf-8")):
+        parts = line.strip().split()
+        if len(parts) >= 2:
+            raw_table.append(tuple(parts[0:2]))
 
 raw_table = clean_up_redundant(clean_up_length(raw_table))
 all_prefix = [s[:i] for s, _ in raw_table for i in range(1, len(s))]
