@@ -10,132 +10,195 @@ parser.add_argument('--max-size', '-s', help='忽略超过该长度的规则', t
 parser.add_argument('--output', '-o', help='输出文件', required=True)
 args = vars(parser.parse_args())
 
-raw_table: typing.List[typing.Tuple[str, str]] = []
-all_prefix: typing.List[str] = []
-all_suffix: typing.List[str] = []
-table: typing.List[typing.Dict[str, typing.Tuple[str, int]]] = []
+Char = str
+Text = str
+TextPair = typing.Tuple[Text, Text]
+RawRule = TextPair
+RawTable = typing.List[RawRule]
+FirstCharRawTable = typing.Dict[Char, RawTable]
+FsmRule = typing.Tuple[Text, 'FsmNode']
+FsmNode = typing.Dict[Char, FsmRule]
 
-def clean_up_length(raw_table: typing.List[typing.Tuple[str, str]]):
+def clean_up_length(raw_table: RawTable) -> RawTable:
+    """
+    Clean up rules with a minimal length of args['max_size']
+    """
+    size = args['max_size']
     result_table = []
     for source, result in raw_table:
-        if len(source) > args['max_size'] > 0:
-           print(f'Rule ignored: {source} -> {result}')
+        if len(source) > size > 0:
+           sys.stderr.write(f'Rule ignored: {source} -> {result}\n')
         else:
             result_table.append((source, result))
     return result_table
 
-def convert_by_raw(raw_table: typing.List[typing.Tuple[str, str]], source: str, direct: bool = False):
-    if source == '':
-        return ''
-    for s, t in raw_table:
-        if source == s:
-            if direct: return t
-        elif source.startswith(s):
-            return t + convert_by_raw(raw_table, source[len(s):], True)
-    return source[0] + convert_by_raw(raw_table, source[1:], True)
+def find_matched_rules(raw_table: RawTable, text: str) -> typing.List[RawRule]:
+    return [rule for rule in raw_table if text.startswith(rule[0])]
 
-def clean_up_redundant(raw_table: typing.List[typing.Tuple[str, str]]):
-    raw_table.sort(key=lambda p: len(p[0]))
-    all_prefix = {s[:i] for s, _ in raw_table for i in range(1, len(s))}
-    result_table = []
-    for source, result in raw_table:
-        keep = len(source) == 1
-        keep = keep or {source[i:] for i in range(1, len(source))} & all_prefix != set()
-        keep = keep or convert_by_raw(raw_table, source) != result
+def translate_word(raw_table: RawTable, text: str) -> TextPair:
+    """
+    Translate first word in text with raw table
+    Returns the translated first word and remaining unchanged text
+    """
+    matched = list(find_matched_rules(raw_table, text))
+    if not matched:
+        src = dst = text[0]
+    else:
+        src, dst = max(matched, key=lambda rule: len(rule[0]))
+    return dst, text[len(src):]
+
+def translate(raw_table: RawTable, text: str) -> str:
+    """
+    Translate word using raw table
+    """
+    output = ''
+    while text:
+        adding, text = translate_word(raw_table, text)
+        output += adding
+    return output
+
+def translate_without_direct(raw_table: RawTable, text: str) -> str:
+    """
+    Apply conversion based on raw table
+    """
+    matched = [rule for rule in find_matched_rules(raw_table, text) if rule[0] != text]
+    if not matched:
+        return text[0] + translate(raw_table, text[1:])
+    else:
+        src, dst = max(matched, key=lambda rule: len(rule[0]))
+        return dst + translate(raw_table, text[len(src):])
+
+def build_strict_prefix_set(raw_table: RawTable) -> typing.Set[str]:
+    return {s[:i] for s, _ in raw_table for i in range(1, len(s))}
+
+def clean_up_redundant(raw_table: RawTable) -> RawTable:
+    """
+    Clean up rules which is not necessary as already been included by other rules
+    """
+    raw_table.sort(key=lambda rule: len(rule[0]))
+    all_strict_prefix = build_strict_prefix_set(raw_table)
+    result_table: RawTable = []
+    for rule in raw_table:
+        src, dst = rule
+        keep = len(src) == 1 and src != dst
+        keep = keep or {src[i:] for i in range(1, len(src))} & all_strict_prefix != set()
+        keep = keep or len(src) > 1 and translate_without_direct(raw_table, src) != dst
         if keep:
-            result_table.insert(0, (source, result))
+            result_table.append(rule)
         else:
-            sys.stderr.write(f'Rule ignored: {source} -> {result}\n')
+            sys.stderr.write(f'Rule ignored: {src} -> {dst}\n')
     if len(result_table) == len(raw_table):
         return result_table
     return clean_up_redundant(result_table)
 
-def translate_word(text: str) -> typing.Tuple[str, str]:
-    for src, dst in raw_table:
-        if text.startswith(src):
-            return dst, text[len(src):]
-    return text[0], text[1:]
-
-def translate(text: str) -> str:
-    output = ''
-    while text:
-        adding, text = translate_word(text)
-        output += adding
-    return output
-
-def translate_with_tail(text: str) -> typing.Tuple[str, str]:
-    output = ''
-    while text and (not output or text not in all_prefix):
-        adding, text = translate_word(text)
-        output += adding
-    return output, text
+def clean_up(raw_table: RawTable) -> RawTable:
+    """
+    Clean up raw table
+    """
+    return clean_up_redundant(clean_up_length(raw_table))
 
 # Read input
-for filename in args['input']:
-    for line in fileinput.input(args['input'], openhook=fileinput.hook_encoded("utf-8")):
-        parts = line.strip().split()
-        if len(parts) >= 2:
-            raw_table.append(tuple(parts[0:2]))
+def load_raw_table(filenames) -> RawTable:
+    raw_table = []
+    for filename in filenames:
+        with fileinput.input(filename, openhook=fileinput.hook_encoded("utf-8")) as file:
+            for line in file:
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    raw_table.append(tuple(parts[0:2]))
+    return raw_table
 
-raw_table = clean_up_redundant(clean_up_length(raw_table))
-all_prefix = [s[:i] for s, _ in raw_table for i in range(1, len(s))]
+sys.stderr.write('Phase 0...\n')
+ori_table = load_raw_table(args['input'])
+ori_table_size = len(ori_table)
+# Raw convertion table
+raw_table: typing.List[typing.Tuple[str, str]] = clean_up(ori_table)
+raw_table_size = len(raw_table)
+# Prefix of all words
+all_strict_prefix: typing.Set[str] = build_strict_prefix_set(raw_table)
 
-# Parse 1
-table.append({})
-for src, dst in reversed(raw_table):
-    state = 0
-    for i in range(len(src)):
-        c = src[i]
-        current = table[state]
+sys.stderr.write('Phase 1...\n')
+root: FsmNode = {}
+all_nodes: typing.List[FsmNode] = [root]
+# Phase 1
+# Build FSM Tree with given rules
+for src, dst in raw_table:
+    current = root
+    for c in src:
         if c not in current:
-            state = len(table)
-            current[c] = ('', state)
-            table.append({})
+            node: FsmNode = {}
+            all_nodes.append(node)
+            current[c] = ('', node)
+            current = node
         else:
-            state = current[c][1]
-    table[state][''] = (dst, 0)
+            current = current[c][1]
+    current[''] = (dst, root)
 
-def get_node(text):
-    state = 0
-    while text:
-        current = table[state]
-        if text[0] not in current:
+def get_node(root: FsmNode, text: str) -> FsmNode:
+    current = root
+    for c in text:
+        if c not in current:
             return None
-        text, state = text[1:], current[text[0]][1]
-    return state
+        current = current[c][1]
+    return current
 
-# Parse 2
+# Phase 2
+# Add edges for unmatched rules
+sys.stderr.write('Phase 2...\n')
+first_char_table: FirstCharRawTable = {}
+for rule in raw_table:
+    ch = rule[0][0]
+    if ch not in first_char_table: first_char_table[ch] = []
+    first_char_table[ch].append(rule)
+
+def translate_with_tail(first_char_table: FirstCharRawTable, all_strict_prefix: typing.Set[str], text: str) -> TextPair:
+    output = ''
+    while text and (not output or text not in all_strict_prefix):
+        adding, text = translate_word(first_char_table.get(text[0], []), text)
+        output += adding
+    return output, text
 for src, dst in raw_table:
     for i in range(1, len(src)):
         prefix = src[:i]
-        state = get_node(prefix)
-        current = table[state]
+        current = get_node(root, prefix)
         if '' in current: continue
-        result, tail = translate_with_tail(prefix)
-        current[''] = (result, get_node(tail))
+        result, tail = translate_with_tail(first_char_table, all_strict_prefix, prefix)
+        current[''] = (result, get_node(root, tail))
 
-# Parse 3
-mapping = {}
-removed = {}
-simplify = []
+sys.stderr.write('Phase 3...\n')
+# Phase 3
+# Remove node with only unmatch
+for node in all_nodes:
+    for key in sorted(node):
+        text, sub = node[key]
+        while len(sub) == 1:
+            text, sub = text + sub[''][0], sub[''][1]
+        node[key] = text, sub
 
-for state in range(len(table)):
-    current = table[state]
-    if list(current.keys()) == ['']:
-        removed[state] = table[state]
-    else:
-        mapping[state] = len(simplify)
-        simplify.append(table[state])
-for state in range(len(simplify)):
-    current = simplify[state]
-    for c in sorted(current.keys()):
-        while current[c][1] in removed:
-            prev_text, prev_state = current[c]
-            current[c] = (prev_text + removed[prev_state][''][0], removed[prev_state][''][1])
-        current[c] = (current[c][0], mapping[current[c][1]])
+sys.stderr.write('Phase 4...\n')
+# Phase 4
+# Use number to replace circular reference
+nodes: typing.List[FsmNode] = [root]
+numbering: typing.Dict[int, int] = { id(root): 0 }
 
-json_result = json.dumps(simplify, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
+for node in nodes:
+    for key in node:
+        sub = node[key][1]
+        if id(sub) in numbering: continue
+        numbering[id(sub)] = len(nodes)
+        nodes.append(sub)
+
+table: typing.Dict[str, typing.Tuple[str, int]] = [
+    {key: (node[key][0], numbering[id(node[key][1])]) for key in node} for node in nodes
+]
+
+table_size = len(table)
+
+# Phase 5
+# Write fsm out as a json file
+sys.stderr.write('Phase 5...\n')
+json_result = json.dumps(table, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
 with open(args['output'], 'w', encoding='utf-8') as output:
     output.write(json_result)
 
-
+sys.stderr.write('Generate FSM with %d nodes based on %d rules (%d rules ignored)' % (table_size, raw_table_size, ori_table_size - raw_table_size))

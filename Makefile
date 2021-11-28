@@ -7,4 +7,4 @@ fsm/t2s.json: OpenCC/data/dictionary/TSCharacters.txt OpenCC/data/dictionary/TSP
 	python opencc_fsm.py $^ -o $@
 
 clean:
-	rm fsm/*
+	rm -f fsm/*.json
